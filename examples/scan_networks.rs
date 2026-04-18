@@ -29,10 +29,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn find_interface<'a>(
-    supplicant: &'a Supplicant<'_>,
+async fn find_interface(
+    supplicant: &Supplicant,
     iface_name: impl AsRef<str>,
-) -> Option<Result<Interface<'a>, SupplicantError>> {
+) -> Option<Result<Interface, SupplicantError>> {
     let mut iface_res: Option<Result<_, SupplicantError>> = None;
     for iface in supplicant.interfaces().await.unwrap().into_iter() {
         let ifname = iface.ifname().await;
@@ -53,7 +53,7 @@ async fn find_interface<'a>(
     iface_res
 }
 
-async fn print_network_info(network: supplicant::Bss<'_>) -> Result<(), SupplicantError> {
+async fn print_network_info(network: supplicant::Bss) -> Result<(), SupplicantError> {
     let b = network.bssid().await?;
     let bssid = macaddr::MacAddr6::new(b[0], b[1], b[2], b[3], b[4], b[5]);
     let frequency = network.frequency().await?;

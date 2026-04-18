@@ -69,14 +69,14 @@ impl From<Infallible> for SupplicantError {
 }
 
 #[derive(Clone, Debug)]
-pub struct Supplicant<'a> {
+pub struct Supplicant {
     conn: Connection,
-    proxy: wpa_supplicant1Proxy<'a>,
+    proxy: wpa_supplicant1Proxy<'static>,
 }
-impl<'a> Supplicant<'a> {
+impl Supplicant {
     /// Create a new `Supplicant` instance.
     #[tracing::instrument]
-    pub async fn connect() -> Result<Supplicant<'a>> {
+    pub async fn connect() -> Result<Supplicant> {
         let conn = Connection::system().await?;
 
         let proxy = wpa_supplicant1Proxy::new(&conn).await?;
@@ -85,7 +85,7 @@ impl<'a> Supplicant<'a> {
     }
 
     #[tracing::instrument]
-    pub async fn interfaces(&self) -> Result<Vec<Interface<'_>>> {
+    pub async fn interfaces(&self) -> Result<Vec<Interface>> {
         let interfaces = self.proxy.interfaces().await?;
 
         futures_util::future::join_all(
@@ -99,7 +99,7 @@ impl<'a> Supplicant<'a> {
     }
 
     #[tracing::instrument]
-    pub async fn get_interface(&self, ifname: &str) -> Result<Interface<'_>> {
+    pub async fn get_interface(&self, ifname: &str) -> Result<Interface> {
         let object_path = self.proxy.get_interface(ifname).await?;
 
         Interface::new(self.conn.clone(), self.proxy.clone(), object_path).await
@@ -108,13 +108,16 @@ impl<'a> Supplicant<'a> {
     #[tracing::instrument]
     pub async fn receive_interface_added(
         &self,
-    ) -> impl futures_util::Stream<Item = Result<Interface<'_>>> + '_ {
+    ) -> impl futures_util::Stream<Item = Result<Interface>> + 'static {
         let iface_added_stream = self.proxy.receive_interface_added().await.unwrap();
+        let proxy = self.proxy.clone();
+        let conn = self.conn.clone();
         iface_added_stream.then(move |iface_added| {
-            let proxy = self.proxy.clone();
+            let proxy = proxy.clone();
+            let conn = conn.clone();
             async move {
                 let object_path = iface_added.args()?.path;
-                Interface::new(self.conn.clone(), proxy, object_path.into()).await
+                Interface::new(conn, proxy, object_path.into()).await
             }
         })
     }
@@ -122,7 +125,7 @@ impl<'a> Supplicant<'a> {
     #[tracing::instrument]
     pub async fn receive_interface_removed(
         &self,
-    ) -> impl futures_util::Stream<Item = Result<OwnedObjectPath>> + '_ {
+    ) -> impl futures_util::Stream<Item = Result<OwnedObjectPath>> + 'static {
         let iface_removed_stream = self.proxy.receive_interface_removed().await.unwrap();
         iface_removed_stream.then(move |iface_removed| async move {
             let args = iface_removed.args()?;
@@ -133,20 +136,20 @@ impl<'a> Supplicant<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Interface<'a> {
+pub struct Interface {
     conn: Connection,
     _path: OwnedObjectPath,
-    proxy: InterfaceProxy<'a>,
-    supplicant_proxy: wpa_supplicant1Proxy<'a>,
+    proxy: InterfaceProxy<'static>,
+    supplicant_proxy: wpa_supplicant1Proxy<'static>,
 }
 
-impl<'a> Interface<'a> {
+impl Interface {
     #[tracing::instrument]
     pub(crate) async fn new(
         conn: Connection,
-        supplicant_proxy: wpa_supplicant1Proxy<'a>,
+        supplicant_proxy: wpa_supplicant1Proxy<'static>,
         interface_path: OwnedObjectPath,
-    ) -> Result<Interface<'a>> {
+    ) -> Result<Interface> {
         let proxy = InterfaceProxy::builder(&conn)
             .destination(SUPPLICANT_DBUS_NAME)?
             .path(interface_path.clone())?
@@ -175,7 +178,9 @@ impl<'a> Interface<'a> {
     }
 
     #[tracing::instrument]
-    pub async fn receive_scan_done(&self) -> impl futures_util::Stream<Item = Result<bool>> + 'a {
+    pub async fn receive_scan_done(
+        &self,
+    ) -> impl futures_util::Stream<Item = Result<bool>> + 'static {
         // TODO: no unwrap
         let scan_done_stream = self.proxy.receive_scan_done().await.unwrap();
         scan_done_stream.then(|signal| async move {
@@ -185,7 +190,7 @@ impl<'a> Interface<'a> {
     }
 
     #[tracing::instrument]
-    pub async fn list_networks(&self) -> Result<Vec<Bss<'_>>> {
+    pub async fn list_networks(&self) -> Result<Vec<Bss>> {
         let bsss = self.proxy.bsss().await?;
         futures_util::future::join_all(bsss.into_iter().map(|object_path| {
             Bss::new(
@@ -212,7 +217,7 @@ impl<'a> Interface<'a> {
     #[tracing::instrument]
     pub async fn receive_state_changed(
         &self,
-    ) -> impl futures_util::Stream<Item = Result<InterfaceState>> + 'a {
+    ) -> impl futures_util::Stream<Item = Result<InterfaceState>> + 'static {
         let proxy = self.proxy.clone();
         proxy
             .receive_state_changed()
@@ -263,20 +268,20 @@ impl<'a> Interface<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Bss<'a> {
+pub struct Bss {
     _conn: Connection,
     _path: OwnedObjectPath,
-    proxy: BSSProxy<'a>,
-    _supplicant_proxy: wpa_supplicant1Proxy<'a>,
+    proxy: BSSProxy<'static>,
+    _supplicant_proxy: wpa_supplicant1Proxy<'static>,
 }
 
-impl<'a> Bss<'a> {
+impl Bss {
     #[tracing::instrument]
     pub(crate) async fn new(
         conn: Connection,
-        supplicant_proxy: wpa_supplicant1Proxy<'a>,
+        supplicant_proxy: wpa_supplicant1Proxy<'static>,
         bss_path: OwnedObjectPath,
-    ) -> Result<Bss<'a>> {
+    ) -> Result<Bss> {
         let proxy = BSSProxy::builder(&conn)
             .destination(SUPPLICANT_DBUS_NAME)?
             .path(bss_path.clone())?

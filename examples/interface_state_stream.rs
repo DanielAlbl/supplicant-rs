@@ -46,8 +46,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn print_state_info<'a>(
-    wlan_interface: &'a Interface<'_>,
+async fn print_state_info(
+    wlan_interface: &Interface,
     state_res: supplicant::Result<supplicant::InterfaceState>,
 ) {
     println!("new state: {:?}", state_res);
@@ -63,10 +63,10 @@ async fn print_state_info<'a>(
     }
 }
 
-async fn find_interface<'a>(
-    supplicant: &'a Supplicant<'_>,
+async fn find_interface(
+    supplicant: &Supplicant,
     iface_name: impl AsRef<str>,
-) -> Option<Result<Interface<'a>, SupplicantError>> {
+) -> Option<Result<Interface, SupplicantError>> {
     let mut iface_res: Option<Result<_, SupplicantError>> = None;
     for iface in supplicant.interfaces().await.unwrap().into_iter() {
         let ifname = iface.ifname().await;
