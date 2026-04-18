@@ -1,6 +1,6 @@
 #[rustfmt::skip]
 pub mod ieee80211;
-mod proxy;
+pub mod proxy;
 
 use futures_util::StreamExt;
 use proxy::{
