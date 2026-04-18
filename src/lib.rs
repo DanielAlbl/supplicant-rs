@@ -10,15 +10,14 @@ use proxy::{
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashSet;
+use crate::ieee80211::{Reason, StatusCode};
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use strum::ParseError;
 use thiserror::Error;
-
-use crate::ieee80211::{Reason, StatusCode};
 use zbus::zvariant::OwnedObjectPath;
 use zbus::{proxy::CacheProperties, Connection, Error as ZbusError};
-use zvariant::{OwnedValue, Type};
+use zvariant::{OwnedValue, Type, Value};
 
 pub const SUPPLICANT_DBUS_NAME: &str = "fi.w1.wpa_supplicant1";
 
@@ -240,6 +239,27 @@ impl<'a> Interface<'a> {
     pub async fn authentication_status(&self) -> Result<StatusCode> {
         Ok((self.proxy.auth_status_code().await? as u16).into())
     }
+
+    #[tracing::instrument(skip(psk))]
+    pub async fn connect(&self, ssid: &str, psk: Option<&str>) -> Result<()> {
+        let ssid_val = Value::from(ssid);
+        let psk_val = psk.map(Value::from);
+        let open_val = Value::from("NONE");
+
+        let mut args = HashMap::from([("ssid", &ssid_val)]);
+        if let Some(psk_val) = psk_val.as_ref() {
+            args.insert("psk", psk_val);
+        } else {
+            args.insert("key_mgmt", &open_val);
+        }
+
+        self.proxy.remove_all_networks().await?;
+        let net_path = self.proxy.add_network(args).await?;
+        self.proxy.select_network(&net_path).await?;
+        self.proxy.save_config().await?;
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -294,10 +314,8 @@ impl<'a> Bss<'a> {
             .remove("KeyMgmt")
             .map(|v| {
                 let vs: Vec<OwnedValue> = v.try_into().map_err(ZbusError::from)?;
-                let vval: Result<HashSet<wpa::KeyMgmt>> = vs
-                    .into_iter()
-                    .map(|s| wpa::KeyMgmt::try_from(s).map_err(From::from))
-                    .collect();
+                let vval: Result<HashSet<wpa::KeyMgmt>> =
+                    vs.into_iter().map(wpa::KeyMgmt::try_from).collect();
                 vval
             })
             .transpose()?;
@@ -305,10 +323,8 @@ impl<'a> Bss<'a> {
             .remove("Pairwise")
             .map(|v| {
                 let vs: Vec<OwnedValue> = v.try_into().map_err(ZbusError::from)?;
-                let vval: Result<HashSet<wpa::Pairwise>> = vs
-                    .into_iter()
-                    .map(|s| wpa::Pairwise::try_from(s).map_err(From::from))
-                    .collect();
+                let vval: Result<HashSet<wpa::Pairwise>> =
+                    vs.into_iter().map(wpa::Pairwise::try_from).collect();
                 vval
             })
             .transpose()?;
@@ -329,10 +345,8 @@ impl<'a> Bss<'a> {
             .remove("KeyMgmt")
             .map(|v| {
                 let vs: Vec<OwnedValue> = v.try_into().map_err(ZbusError::from)?;
-                let vval: Result<HashSet<rsn::KeyMgmt>> = vs
-                    .into_iter()
-                    .map(|s| rsn::KeyMgmt::try_from(s).map_err(From::from))
-                    .collect();
+                let vval: Result<HashSet<rsn::KeyMgmt>> =
+                    vs.into_iter().map(rsn::KeyMgmt::try_from).collect();
                 vval
             })
             .transpose()?;
@@ -340,10 +354,8 @@ impl<'a> Bss<'a> {
             .remove("Pairwise")
             .map(|v| {
                 let vs: Vec<OwnedValue> = v.try_into().map_err(ZbusError::from)?;
-                let vval: Result<HashSet<rsn::Pairwise>> = vs
-                    .into_iter()
-                    .map(|s| rsn::Pairwise::try_from(s).map_err(From::from))
-                    .collect();
+                let vval: Result<HashSet<rsn::Pairwise>> =
+                    vs.into_iter().map(rsn::Pairwise::try_from).collect();
                 vval
             })
             .transpose()?;
